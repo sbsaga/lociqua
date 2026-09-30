@@ -7,6 +7,7 @@ searchable, traceable company information.
 ## Start
 
 - [What problem Lociqua solves](WHAT_PROBLEM.md)
+- [First steps: from file to result](FIRST_STEPS.md) — plain-language introduction
 - [Getting started](GETTING_STARTED.md)
 - [Use cases](USE_CASES.md)
 - [Feature guide](FEATURES.md)

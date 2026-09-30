@@ -1,5 +1,7 @@
 # Lociqua user guide
 
+If you are new to business-data tools, begin with [first steps](FIRST_STEPS.md).
+
 ## 1. Sign in
 
 In a production deployment, first pass the operator's HTTPS and identity
@@ -21,7 +23,7 @@ Choose **Search**, enter a keyword and one locality per line, then run the
 search. Results are grouped by the requested location. Selecting a result opens
 its company detail view.
 
-![One request creates bounded, independent location tasks](../assets/diagrams/multi-location-search.svg)
+![One person can search several locations and receive separate grouped result sets](../assets/lociqua-multi-location-search.png)
 
 ## 4. Review quality, provenance, and history
 
@@ -36,11 +38,15 @@ records, an explainable score, and the matching reasons. Choose **Approve match*
 or **Reject match**. Both records remain stored; the decision is reversible by a
 later operational review because no destructive merge occurs.
 
+![A human reviews two similar records while each source remains visible and preserved](../assets/lociqua-duplicate-review.png)
+
 ## 6. Export and access control
 
 Exports require an authenticated editor or owner. Share exports only under the
 same data-rights conditions as the source. Owners can create users, change roles,
 or revoke access.
+
+![Quality checks help people inspect missing information and its source before relying on a record](../assets/lociqua-quality-and-provenance.png)
 
 ![Viewer, editor, and owner permissions](../assets/diagrams/role-permissions.svg)
 
