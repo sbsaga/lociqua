@@ -1,0 +1,12 @@
+services:
+  lociqua:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - lociqa_data:/app/data
+    environment:
+      PYTHONUNBUFFERED: "1"
+      LOCIQUA_DATABASE_PATH: /app/data/lociqua.db
+volumes:
+  lociqua_data:
