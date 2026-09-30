@@ -1,5 +1,11 @@
 # Self-hosting Lociqua
 
+![Illustration of a protected directory deployment controlled by its operator](../assets/lociqua-self-hosted-control.png)
+
+Lociqua is software your organisation runs and operates. This guide explains the
+local production-style Docker setup; it does not turn your deployment into a
+hosted global directory or replace your own security review.
+
 ![Self-hosted trust boundary](../assets/diagrams/trust-boundary.svg)
 
 Lociqua's production profile runs the application, worker, PostgreSQL/PostGIS,

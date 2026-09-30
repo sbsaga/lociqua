@@ -1,5 +1,7 @@
 # Lociqua use cases
 
+![Illustration of one request searching separate business lists for several locations](../assets/lociqua-multi-location-search.png)
+
 ![Authorized data flow from source to controlled business decisions](../assets/diagrams/authorized-data-flow.svg)
 
 Lociqua helps teams organize business records they are permitted to use. It is
