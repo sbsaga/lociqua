@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install . pip-audit
+      - run: python -m unittest discover -s tests -v
+      - run: pip-audit
+      - name: Validate production Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password-not-for-production
+          LOCIQUA_AUTH_SECRET: ci-auth-secret-that-is-longer-than-thirty-two-characters
+          LOCIQUA_BOOTSTRAP_EMAIL: ci-owner@example.invalid
+          LOCIQUA_BOOTSTRAP_PASSWORD: ci-bootstrap-password-not-for-production
+        run: docker compose -f docker-compose.production.yml config --quiet
+      - name: Start disposable production stack and run smoke checks
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password-not-for-production
+          LOCIQUA_AUTH_SECRET: ci-auth-secret-that-is-longer-than-thirty-two-characters
+          LOCIQUA_BOOTSTRAP_EMAIL: ci-owner@example.invalid
+          LOCIQUA_BOOTSTRAP_PASSWORD: ci-bootstrap-password-not-for-production
+        run: |
+          docker compose -f docker-compose.production.yml up --build -d --wait
+          LOCIQUA_TEST_URL=http://127.0.0.1 python tests/production_smoke.py
+      - name: Tear down disposable production stack
+        if: always()
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password-not-for-production
+          LOCIQUA_AUTH_SECRET: ci-auth-secret-that-is-longer-than-thirty-two-characters
+          LOCIQUA_BOOTSTRAP_EMAIL: ci-owner@example.invalid
+          LOCIQUA_BOOTSTRAP_PASSWORD: ci-bootstrap-password-not-for-production
+        run: docker compose -f docker-compose.production.yml down -v --remove-orphans

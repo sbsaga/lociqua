@@ -1,27 +1,22 @@
 # What problem does Lociqua solve?
 
-Many teams have company data in spreadsheets, CRM exports, or internal files.
-Those lists are hard to search, contain duplicate records, and lose track of
-where each record came from. Lociqua turns authorized business data into a local
-directory that is easier to use.
+Teams often have permitted company data in separate CRM exports, partner lists,
+customer files, and internal spreadsheets. The records are hard to search across
+locations, fields use inconsistent formats, duplicates are uncertain, exports
+lose source context, and no one can explain what changed.
 
-## Example
+Lociqua provides a self-hosted workflow for organizing that authorized data:
 
-An agency imports a CSV of businesses. A user searches for `software` in Baner,
-Hinjewadi, and Kharadi. Lociqua starts the three searches independently and
-shows one tab for each locality. Each tab can show up to five matching records.
+1. Register and import a permitted source.
+2. Normalize company records into a searchable local directory.
+3. Search multiple locations with independently bounded tasks.
+4. Inspect quality, source provenance, and audit history.
+5. Review duplicate candidates without deleting either company.
+6. Export only under the same rules that permit use of the source data.
 
-## What Lociqua does today
+It does not create rights to data, guarantee that a result is correct, or
+discover every company in a market. The organization operating Lociqua remains
+responsible for data rights, privacy, retention, and access decisions.
 
-- Imports UTF-8 CSV files containing a `name` column.
-- Stores records locally in SQLite.
-- Normalizes names, domains, website URLs, phones, and categories.
-- Preserves the import source for each record.
-- Searches one or more locations concurrently.
-- Keeps results separated by location in the dashboard.
-
-## What it does not do
-
-Lociqua does not scrape Google Maps, bypass restrictions, or guarantee a global
-business directory. It only finds records that have been legally imported or
-provided by a configured authorized provider.
+Next: [use cases](USE_CASES.md), [user guide](USER_GUIDE.md), or
+[security and data rights](SECURITY_AND_DATA_RIGHTS.md).

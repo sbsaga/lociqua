@@ -1,25 +1,21 @@
-# Deployment
+# Deployment notes
 
-## Local Docker run
+Use `docker-compose.production.yml` for the operational profile. It starts the
+application, worker, PostgreSQL/PostGIS, Redis, and Nginx reverse proxy.
 
 ```powershell
-docker compose up --build
+docker compose -f docker-compose.production.yml up --build -d --remove-orphans
+docker compose -f docker-compose.production.yml ps
 ```
 
-Open `http://127.0.0.1:8000/`. The supplied Compose file is a convenient local
-container workflow; it does not add authentication or TLS.
+The production profile requires a private `.env` with unique database,
+application, and bootstrap-user secrets. It enables application authentication;
+the local development Compose file is not a substitute for a public deployment.
 
-## Before an internet-facing deployment
+For public access, provide HTTPS, a network boundary, and external identity
+policy. Cloudflare Tunnel with Cloudflare Access is one operator-managed option,
+but it is not a replacement for Lociqua roles, backups, source permissions, or
+incident response.
 
-- Terminate TLS at a trusted reverse proxy.
-- Add authenticated users, authorization, and tenant isolation.
-- Use PostgreSQL/PostGIS instead of the default SQLite database.
-- Use Redis/a worker service for large imports, scheduled refreshes, and queues.
-- Put secrets in a secret manager; never in repository files or client code.
-- Configure backups, retention periods, monitoring, and an incident process.
-
-## Scaling direction
-
-Keep API requests stateless, store durable jobs/results in PostgreSQL, and move
-large imports/enrichment to bounded workers. Horizontal scale is appropriate
-only after measurements show that a single instance is insufficient.
+Before release, follow [production testing](PRODUCTION_TESTING.md),
+[operations](OPERATIONS.md), and the [release checklist](RELEASE_CHECKLIST.md).

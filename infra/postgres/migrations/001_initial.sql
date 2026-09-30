@@ -1,0 +1,13 @@
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TABLE IF NOT EXISTS workspaces (id UUID PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS workspace_memberships (workspace_id UUID REFERENCES workspaces(id), user_id UUID REFERENCES users(id), role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')), PRIMARY KEY(workspace_id,user_id));
+CREATE TABLE IF NOT EXISTS data_sources (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id), name TEXT NOT NULL, source_type TEXT NOT NULL, permission_basis TEXT NOT NULL, license_note TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(workspace_id,name));
+CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id), name TEXT NOT NULL, description TEXT, categories JSONB NOT NULL DEFAULT '[]', website TEXT, domain TEXT, phone TEXT, email TEXT, address TEXT, locality TEXT, city TEXT, state TEXT, country TEXT, postal_code TEXT, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, coordinates GEOGRAPHY(POINT,4326), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS companies_workspace_location_idx ON companies USING GIST(coordinates);
+CREATE INDEX IF NOT EXISTS companies_workspace_name_idx ON companies(workspace_id, name);
+CREATE TABLE IF NOT EXISTS company_sources (company_id TEXT NOT NULL REFERENCES companies(id), provider TEXT NOT NULL, provider_record_id TEXT NOT NULL, source_url TEXT, discovered_at TIMESTAMPTZ NOT NULL, PRIMARY KEY(provider, provider_record_id));
+CREATE TABLE IF NOT EXISTS company_field_provenance (company_id TEXT NOT NULL REFERENCES companies(id), field_name TEXT NOT NULL, source_name TEXT NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(company_id, field_name, source_name));
+CREATE TABLE IF NOT EXISTS audit_events (id BIGSERIAL PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id), actor_id UUID REFERENCES users(id), action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}', occurred_at TIMESTAMPTZ NOT NULL DEFAULT now());
+INSERT INTO workspaces(id, name) VALUES ('00000000-0000-0000-0000-000000000001', 'Default workspace') ON CONFLICT (id) DO NOTHING;

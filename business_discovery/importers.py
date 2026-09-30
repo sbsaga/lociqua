@@ -40,6 +40,7 @@ def import_csv(payload: bytes, store: CompanyStore, source_name: str = "user_csv
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames or "name" not in {key.strip().lower() for key in reader.fieldnames}:
         raise ValueError("CSV must include a name column")
+    store.register_source(source_name)
     accepted, errors, records = 0, [], []
     for number, raw in enumerate(reader, start=2):
         if number > max_rows + 1: raise ValueError(f"CSV exceeds {max_rows} row limit")
