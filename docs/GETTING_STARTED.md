@@ -1,41 +1,45 @@
 # Getting started
 
-You need Python 3.11 or newer. No API key or third-party account is required for
-the local CSV workflow.
+Use this guide for a local development workflow. For the Docker production
+profile, use [self-hosting](SELF_HOSTING.md).
 
-## 1. Install and run
+## 1. Install
 
 ```powershell
 python -m pip install -e .
+python -m unittest discover -s tests -v
+```
+
+## 2. Start the local application
+
+```powershell
 python -c "from business_discovery.api import serve; serve()"
 ```
 
-Open `http://127.0.0.1:8000/` in your browser.
+Open `http://127.0.0.1:8000/`. Local development can use SQLite; use the
+PostgreSQL/Redis Compose profile for an operational deployment.
 
-## 2. Import data
+## 3. Import fictional example data
 
-Use `examples/companies.csv` as a safe example. A CSV must be UTF-8 and include
-a `name` column. Useful optional columns are `categories`, `website`, `phone`,
-`address`, `locality`, `city`, and `country`.
+The repository's `examples/companies.csv` is fictional demonstration data. A
+real CSV must be UTF-8 and include `name`. Useful optional fields include
+`categories`, `website`, `phone`, `address`, `locality`, `city`, and `country`.
 
-## 3. Search multiple places
+Only import information you are allowed to store and use.
 
-Enter a keyword and one location per line. For example:
+## 4. Search locations
+
+Enter a keyword and one location per line, for example:
 
 ```text
-Keyword: AI
+Keyword: software
 Locations:
 Baner
 Hinjewadi
 Kharadi
 ```
 
-Choose 5 results per location and select **Search all locations**. Every locality
-gets its own tab and searches run concurrently.
+Each location is processed independently. Select a result to inspect quality,
+source records, provenance, and audit history.
 
-## Command line alternative
-
-```powershell
-python -m business_discovery.cli import-csv examples/companies.csv
-python -m business_discovery.cli search --keyword AI --location Baner
-```
+Next: [user guide](USER_GUIDE.md) or [self-hosting](SELF_HOSTING.md).

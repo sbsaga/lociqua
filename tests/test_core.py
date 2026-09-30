@@ -8,11 +8,17 @@ from business_discovery.orchestrator import SearchOrchestrator
 from business_discovery.providers import FixtureProvider
 from business_discovery.providers import LocalDatabaseProvider
 from business_discovery.storage import CompanyStore
+from business_discovery.duplicates import find_candidates
 from business_discovery.importers import import_csv
 from business_discovery.importers import preview_csv
 
 
 class CoreTests(unittest.TestCase):
+    def test_duplicate_candidates_are_explainable(self):
+        first = Company(id="one", name="Acme Analytics", domain="acme.example", city="Pune")
+        second = Company(id="two", name="Acme Analytics Pvt Ltd", domain="acme.example", city="Pune")
+        matches = find_candidates([first, second])
+        self.assertEqual(1, len(matches)); self.assertIn("same_domain", matches[0].reasons)
     def test_validation(self):
         with self.assertRaises(ValueError):
             SearchQuery("", "Pune").validate(100)
@@ -50,6 +56,16 @@ class CoreTests(unittest.TestCase):
             store = CompanyStore(f"{directory}/companies.db")
             store.save_search("Pune AI", "AI", "Pune", 5)
             self.assertEqual(store.saved_searches()[0]["name"], "Pune AI")
+
+    def test_company_provenance_quality_and_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = CompanyStore(f"{directory}/companies.db")
+            import_csv(b"name,website,locality\nAcme,https://acme.example,Baner\n", store, "approved_vendor_export")
+            company = store.search("Acme", "Baner", 1)[0]
+            detail = store.company_detail(company.id)
+            self.assertEqual(detail["quality"]["completeness"], 29)
+            self.assertTrue(any(item["field_name"] == "website" for item in detail["field_provenance"]))
+            self.assertEqual(detail["audit_events"][0]["action"], "company_upserted")
 
 if __name__ == "__main__":
     unittest.main()
