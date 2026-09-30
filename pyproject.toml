@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Self-hosted, provider-agnostic business discovery from authorized data"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
-dependencies = ["psycopg[binary]>=3.2,<4", "redis>=5,<7"]
+dependencies = ["psycopg[binary]>=3.2,<4", "redis>=5,<9"]
 
 [project.scripts]
 search-businesses = "business_discovery.cli:main"
