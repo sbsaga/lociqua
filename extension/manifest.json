@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Lociqua Evidence Capture",
+  "version": "0.1.0",
+  "description": "User-confirmed capture from Lociqua-approved sources. It does not crawl, search, or automate websites.",
+  "action": {"default_title": "Save approved evidence to Lociqua", "default_popup": "popup.html"},
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"]
+}

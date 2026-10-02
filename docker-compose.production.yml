@@ -12,7 +12,7 @@ services:
       LOCIQUA_BOOTSTRAP_PASSWORD: ${LOCIQUA_BOOTSTRAP_PASSWORD:?set 12+ character initial owner password in .env}
       LOCIQUA_ALERT_WEBHOOK_URL: ${LOCIQUA_ALERT_WEBHOOK_URL:-}
     depends_on:
-      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     volumes: [app_data:/app/data]
     healthcheck:
@@ -42,6 +42,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+  migrate:
+    image: postgis/postgis:16-3.4
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes: [./infra/postgres/migrations:/migrations:ro]
+    depends_on:
+      postgres: {condition: service_healthy}
+    command: ["sh", "-ec", "for file in /migrations/*.sql; do psql -v ON_ERROR_STOP=1 -h postgres -U lociqua -d lociqua -f \"$$file\"; done"]
   worker:
     build: .
     command: ["python", "-m", "business_discovery.worker"]
@@ -51,7 +59,7 @@ services:
       LOCIQUA_WORKSPACE_ID: ${LOCIQUA_WORKSPACE_ID:-00000000-0000-0000-0000-000000000001}
       LOCIQUA_ALERT_WEBHOOK_URL: ${LOCIQUA_ALERT_WEBHOOK_URL:-}
     depends_on:
-      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
   proxy:
     image: nginx:1.27-alpine

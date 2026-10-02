@@ -12,6 +12,14 @@ trusted local environment, not public internet use without TLS and authenticatio
 | `GET/POST /api/saved-searches` | List or save local searches. |
 | `GET /api/providers` | List configured providers. |
 | `GET/POST /api/sources` | List or register authorized data-source metadata. |
+| `GET/POST /api/source-policies` | List approved policies or, for owners, create/update an approved source policy. |
+| `GET /api/evidence` | List workspace-scoped captured evidence, optionally filtered by status or company. |
+| `POST /api/evidence/capture` | Editor/owner submits explicitly user-confirmed evidence from an approved browser source. |
+| `POST /api/evidence/{id}` | Editor/owner approves, rejects, flags, or marks pending evidence stale. |
+| `POST /api/auth/extension-token` | Creates a 10-minute token for the installed browser extension. |
+| `GET/POST /api/research-sessions` | List or create bounded multi-location research sessions. |
+| `GET /api/research-sessions/{id}` | Return a session and its independently tracked location tasks. |
+| `POST /api/research-tasks/{id}` | Editor/owner updates a research task state and notes. |
 | `GET /api/companies/{id}` | Return a company, quality score, field provenance, and audit events. |
 | `GET /api/companies?quality=low` | List low-quality records for review (PostgreSQL deployment). |
 | `GET /api/duplicates?status=pending` | List scoped, explainable duplicate review candidates. |

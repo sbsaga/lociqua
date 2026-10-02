@@ -15,6 +15,9 @@ searchable, traceable company information.
 ## Use
 
 - [User guide](USER_GUIDE.md)
+- [Authorised web research](AUTHORIZED_WEB_RESEARCH.md)
+- [Web research playbook](WEB_RESEARCH_PLAYBOOK.md) — plain-language team workflow
+- [Safe data collection boundaries](SAFE_DATA_COLLECTION.md)
 - [API reference](API.md)
 - [Data rights and security](SECURITY_AND_DATA_RIGHTS.md)
 

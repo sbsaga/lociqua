@@ -13,6 +13,9 @@ from .normalization import deduplicate, normalize_company
 from .storage import CompanyStore
 from .auth import hash_password, verify_password
 from .duplicates import find_candidates
+from .evidence import (CAPTURE_FIELDS, CONNECTOR_TYPES, EVIDENCE_STATUSES, POLICY_STATUSES,
+                       TASK_STATUSES, canonical_domain, capture_url, content_fingerprint,
+                       domain_matches, validate_fields)
 
 DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000001"
 
@@ -53,6 +56,185 @@ class PostgresCompanyStore(CompanyStore):
         with self.connection() as db, db.cursor() as cur:
             cur.execute("SELECT id::text,name,source_type,permission_basis,license_note,created_at FROM data_sources WHERE workspace_id=%s ORDER BY created_at DESC", (self.workspace_id,))
             return list(cur.fetchall())
+
+    def source_policies(self, domain: str | None = None, approved_capture_only: bool = False) -> list[dict[str, object]]:
+        """Return only workspace-scoped policies; browser capture is default-deny."""
+        normalized = canonical_domain(domain) if domain else None
+        with self.connection() as db, db.cursor() as cur:
+            sql = """SELECT id::text,name,domain,connector_type,permission_basis,license_note,attribution_text,
+                       attribution_required,export_allowed,retention_days,allowed_fields,rate_limit_per_minute,status,
+                       created_at,updated_at FROM source_policies WHERE workspace_id=%s"""
+            params: list[object] = [self.workspace_id]
+            if approved_capture_only:
+                sql += " AND connector_type='browser_capture' AND status='approved'"
+            if normalized:
+                # A policy can approve its host and any of its subdomains, but never a sibling domain.
+                sql += " AND (%s=domain OR %s LIKE ('%%.' || domain))"; params.extend([normalized, normalized])
+            sql += " ORDER BY name"
+            cur.execute(sql, params)
+            return list(cur.fetchall())
+
+    def save_source_policy(self, raw: dict[str, object], actor_id: str | None = None) -> dict[str, object]:
+        name = str(raw.get("name", "")).strip()
+        if not 1 <= len(name) <= 160: raise ValueError("policy name must contain 1-160 characters")
+        connector_type = str(raw.get("connector_type", "")).strip()
+        if connector_type not in CONNECTOR_TYPES: raise ValueError("invalid connector_type")
+        status = str(raw.get("status", "draft")).strip()
+        if status not in POLICY_STATUSES: raise ValueError("invalid policy status")
+        domain = canonical_domain(str(raw.get("domain", "")))
+        permission_basis = str(raw.get("permission_basis", "")).strip()
+        if not permission_basis or len(permission_basis) > 500: raise ValueError("permission_basis is required and must not exceed 500 characters")
+        allowed_fields = raw.get("allowed_fields", [])
+        if not isinstance(allowed_fields, list) or not set(allowed_fields).issubset(CAPTURE_FIELDS):
+            raise ValueError("allowed_fields must contain supported company fields only")
+        retention_days = raw.get("retention_days")
+        if retention_days is not None and (not isinstance(retention_days, int) or not 1 <= retention_days <= 3650): raise ValueError("retention_days must be 1-3650")
+        rate_limit = raw.get("rate_limit_per_minute")
+        if rate_limit is not None and (not isinstance(rate_limit, int) or not 1 <= rate_limit <= 10000): raise ValueError("rate_limit_per_minute must be 1-10000")
+        policy_id = raw.get("id")
+        with self.connection() as db, db.cursor() as cur:
+            if policy_id:
+                cur.execute("""UPDATE source_policies SET name=%s,domain=%s,connector_type=%s,permission_basis=%s,
+                    license_note=%s,attribution_text=%s,attribution_required=%s,export_allowed=%s,retention_days=%s,
+                    allowed_fields=%s::jsonb,rate_limit_per_minute=%s,status=%s,updated_by=%s,updated_at=now()
+                    WHERE id=%s AND workspace_id=%s RETURNING id::text,name,domain,connector_type,permission_basis,
+                    license_note,attribution_text,attribution_required,export_allowed,retention_days,allowed_fields,
+                    rate_limit_per_minute,status,created_at,updated_at""", (name,domain,connector_type,permission_basis,
+                    raw.get("license_note"),raw.get("attribution_text"),bool(raw.get("attribution_required",False)),
+                    bool(raw.get("export_allowed",True)),retention_days,json.dumps(allowed_fields),rate_limit,status,actor_id,
+                    policy_id,self.workspace_id))
+            else:
+                cur.execute("""INSERT INTO source_policies(workspace_id,name,domain,connector_type,permission_basis,
+                    license_note,attribution_text,attribution_required,export_allowed,retention_days,allowed_fields,
+                    rate_limit_per_minute,status,created_by,updated_by) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)
+                    ON CONFLICT(workspace_id,domain,connector_type) DO UPDATE SET name=EXCLUDED.name,
+                    permission_basis=EXCLUDED.permission_basis,license_note=EXCLUDED.license_note,
+                    attribution_text=EXCLUDED.attribution_text,attribution_required=EXCLUDED.attribution_required,
+                    export_allowed=EXCLUDED.export_allowed,retention_days=EXCLUDED.retention_days,
+                    allowed_fields=EXCLUDED.allowed_fields,rate_limit_per_minute=EXCLUDED.rate_limit_per_minute,
+                    status=EXCLUDED.status,updated_by=EXCLUDED.updated_by,updated_at=now()
+                    RETURNING id::text,name,domain,connector_type,permission_basis,license_note,attribution_text,
+                    attribution_required,export_allowed,retention_days,allowed_fields,rate_limit_per_minute,status,created_at,updated_at""",
+                    (self.workspace_id,name,domain,connector_type,permission_basis,raw.get("license_note"),raw.get("attribution_text"),
+                    bool(raw.get("attribution_required",False)),bool(raw.get("export_allowed",True)),retention_days,
+                    json.dumps(allowed_fields),rate_limit,status,actor_id,actor_id))
+            saved = cur.fetchone()
+            if not saved: raise ValueError("source policy was not found")
+            cur.execute("INSERT INTO audit_events(workspace_id,actor_id,action,entity_type,entity_id,details) VALUES(%s,%s,%s,'source_policy',%s,%s::jsonb)",
+                (self.workspace_id,actor_id,"source_policy_updated" if policy_id else "source_policy_saved",saved["id"],json.dumps({"domain":domain,"status":status,"connector_type":connector_type})))
+            return saved
+
+    def create_research_session(self, raw: dict[str, object], actor_id: str | None = None) -> dict[str, object]:
+        title, keyword = str(raw.get("title", "")).strip(), str(raw.get("keyword", "")).strip()
+        locations = raw.get("target_locations", [])
+        policy_ids = raw.get("source_policy_ids", [])
+        if not title or not keyword or not isinstance(locations, list): raise ValueError("title, keyword, and target_locations are required")
+        locations = list(dict.fromkeys(str(item).strip() for item in locations if str(item).strip()))
+        if not 1 <= len(locations) <= 100: raise ValueError("target_locations must contain 1-100 locations")
+        if not isinstance(policy_ids, list): raise ValueError("source_policy_ids must be a list")
+        with self.connection() as db, db.cursor() as cur:
+            if policy_ids:
+                if not all(isinstance(item, str) for item in policy_ids): raise ValueError("source_policy_ids must contain policy identifiers")
+                cur.execute("SELECT count(*) AS count FROM source_policies WHERE workspace_id=%s AND id::text = ANY(%s) AND status='approved'", (self.workspace_id,policy_ids))
+                if cur.fetchone()["count"] != len(set(policy_ids)):
+                    raise ValueError("research sessions may scope only approved workspace source policies")
+            cur.execute("""INSERT INTO research_sessions(workspace_id,title,keyword,target_locations,source_policy_ids,owner_id,due_at,status)
+                VALUES(%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,'not_started') RETURNING id::text,title,keyword,target_locations,source_policy_ids,owner_id::text,due_at,status,created_at""",
+                (self.workspace_id,title,keyword,json.dumps(locations),json.dumps(policy_ids),actor_id,raw.get("due_at")))
+            session = cur.fetchone()
+            for location in locations:
+                cur.execute("INSERT INTO research_tasks(workspace_id,session_id,location) VALUES(%s,%s,%s)", (self.workspace_id,session["id"],location))
+            cur.execute("INSERT INTO audit_events(workspace_id,actor_id,action,entity_type,entity_id,details) VALUES(%s,%s,'research_session_created','research_session',%s,%s::jsonb)",
+                (self.workspace_id,actor_id,session["id"],json.dumps({"locations":len(locations)})))
+            return self.research_session(session["id"]) or session
+
+    def research_sessions(self) -> list[dict[str, object]]:
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("SELECT id::text,title,keyword,target_locations,source_policy_ids,owner_id::text,due_at,status,created_at,updated_at FROM research_sessions WHERE workspace_id=%s ORDER BY created_at DESC", (self.workspace_id,))
+            return [self.research_session(item["id"]) for item in cur.fetchall()]
+
+    def research_session(self, session_id: str) -> dict[str, object] | None:
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("SELECT id::text,title,keyword,target_locations,source_policy_ids,owner_id::text,due_at,status,created_at,updated_at FROM research_sessions WHERE id=%s AND workspace_id=%s", (session_id,self.workspace_id)); session=cur.fetchone()
+            if not session: return None
+            cur.execute("SELECT id::text,location,status,notes,updated_at FROM research_tasks WHERE session_id=%s AND workspace_id=%s ORDER BY location", (session_id,self.workspace_id)); session["tasks"]=list(cur.fetchall())
+            return session
+
+    def update_research_task(self, task_id: str, status: str, notes: str | None, actor_id: str | None = None) -> bool:
+        if status not in TASK_STATUSES: raise ValueError("invalid research task status")
+        if notes is not None and len(notes) > 4000: raise ValueError("notes must not exceed 4000 characters")
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("UPDATE research_tasks SET status=%s,notes=%s,updated_at=now() WHERE id=%s AND workspace_id=%s", (status,notes,task_id,self.workspace_id)); changed=cur.rowcount == 1
+            if changed: cur.execute("INSERT INTO audit_events(workspace_id,actor_id,action,entity_type,entity_id,details) VALUES(%s,%s,'research_task_updated','research_task',%s,%s::jsonb)", (self.workspace_id,actor_id,task_id,json.dumps({"status":status})))
+            return changed
+
+    def capture_evidence(self, raw: dict[str, object], actor_id: str | None = None) -> dict[str, object]:
+        policy_id = str(raw.get("source_policy_id", "")); url, observed_domain = capture_url(str(raw.get("capture_url", "")))
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("SELECT id::text,name,domain,allowed_fields,retention_days,rate_limit_per_minute,status FROM source_policies WHERE id=%s AND workspace_id=%s AND connector_type='browser_capture'", (policy_id,self.workspace_id)); policy=cur.fetchone()
+            if not policy or policy["status"] != "approved": raise ValueError("an approved browser_capture source policy is required")
+            if not domain_matches(policy["domain"], observed_domain): raise ValueError("capture URL domain is not approved by this source policy")
+            fields = validate_fields(raw.get("fields"), policy["allowed_fields"])
+            if policy["rate_limit_per_minute"]:
+                cur.execute("SELECT count(*) AS count FROM evidence_items WHERE workspace_id=%s AND source_policy_id=%s AND created_at > now() - interval '1 minute'", (self.workspace_id,policy_id))
+                if cur.fetchone()["count"] >= policy["rate_limit_per_minute"]:
+                    raise ValueError("source policy capture rate limit exceeded; wait before submitting more evidence")
+            task_id = raw.get("research_task_id")
+            if task_id:
+                cur.execute("SELECT id FROM research_tasks WHERE id=%s AND workspace_id=%s", (task_id,self.workspace_id))
+                if not cur.fetchone(): raise ValueError("research task was not found")
+            company_id = raw.get("company_id")
+            if company_id:
+                cur.execute("SELECT id FROM companies WHERE id=%s AND workspace_id=%s", (company_id,self.workspace_id))
+                if not cur.fetchone(): raise ValueError("company was not found")
+            else:
+                evidence_source = Source(provider=f"evidence:{policy['name']}", provider_record_id=content_fingerprint(url, fields)[:32], source_url=url)
+                company = Company(id=f"evidence:{content_fingerprint(url, fields)[:24]}", name=str(fields["name"]), description=fields.get("description"), categories=fields.get("categories", []), website=fields.get("website"), phone=fields.get("phone"), email=fields.get("email"), address=fields.get("address"), locality=fields.get("locality"), city=fields.get("city"), state=fields.get("state"), country=fields.get("country"), postal_code=fields.get("postal_code"), sources=[evidence_source])
+                # Preserve the same normalisation and immutable source record rules as a CSV import.
+                self.upsert_many([company]); company_id = company.id
+            fingerprint = content_fingerprint(url, fields)
+            cur.execute("""INSERT INTO evidence_items(workspace_id,company_id,source_policy_id,research_task_id,capture_url,capture_domain,content_fingerprint,captured_fields,captured_by,expires_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,CASE WHEN CAST(%s AS integer) IS NULL THEN NULL ELSE now() + (CAST(%s AS integer) * interval '1 day') END)
+                ON CONFLICT(workspace_id,source_policy_id,content_fingerprint) DO UPDATE SET captured_by=EXCLUDED.captured_by,created_at=now()
+                RETURNING id::text,company_id,source_policy_id,status,capture_url,capture_domain,captured_fields,expires_at,created_at""",
+                (self.workspace_id,company_id,policy_id,task_id,url,observed_domain,fingerprint,json.dumps(fields),actor_id,policy["retention_days"],policy["retention_days"]))
+            evidence=cur.fetchone()
+            cur.execute("INSERT INTO audit_events(workspace_id,actor_id,action,entity_type,entity_id,details) VALUES(%s,%s,'evidence_captured','evidence',%s,%s::jsonb)", (self.workspace_id,actor_id,evidence["id"],json.dumps({"company_id":company_id,"policy":policy["name"],"domain":observed_domain})))
+            return evidence
+
+    def evidence_items(self, status: str | None = None, company_id: str | None = None) -> list[dict[str, object]]:
+        if status is not None and status not in EVIDENCE_STATUSES: raise ValueError("invalid evidence status")
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("""SELECT e.id::text,e.company_id,e.source_policy_id::text,e.research_task_id::text,e.capture_url,e.capture_domain,e.captured_fields,e.status,e.expires_at,e.created_at,
+                p.name AS policy_name,p.attribution_text,p.export_allowed,c.email AS captured_by_email,r.email AS reviewer_email
+                FROM evidence_items e JOIN source_policies p ON p.id=e.source_policy_id LEFT JOIN users c ON c.id=e.captured_by LEFT JOIN users r ON r.id=e.reviewed_by
+                WHERE e.workspace_id=%s AND (%s::text IS NULL OR e.status=%s) AND (%s::text IS NULL OR e.company_id=%s) ORDER BY e.created_at DESC LIMIT 500""", (self.workspace_id,status,status,company_id,company_id))
+            return list(cur.fetchall())
+
+    def review_evidence(self, evidence_id: str, status: str, reviewer_id: str | None = None) -> bool:
+        if status not in EVIDENCE_STATUSES - {"pending"}: raise ValueError("invalid evidence review status")
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("UPDATE evidence_items SET status=%s,reviewed_by=%s,reviewed_at=now() WHERE id=%s AND workspace_id=%s AND status='pending'", (status,reviewer_id,evidence_id,self.workspace_id)); changed=cur.rowcount == 1
+            if changed: cur.execute("INSERT INTO audit_events(workspace_id,actor_id,action,entity_type,entity_id,details) VALUES(%s,%s,%s,'evidence',%s,%s::jsonb)", (self.workspace_id,reviewer_id,f"evidence_{status}",evidence_id,json.dumps({"review_only":True})))
+            return changed
+
+    def purge_expired_evidence(self) -> int:
+        """Enforce source-policy retention without deleting the company record itself."""
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("DELETE FROM evidence_items WHERE workspace_id=%s AND expires_at IS NOT NULL AND expires_at <= now() RETURNING id::text", (self.workspace_id,))
+            removed = [row["id"] for row in cur.fetchall()]
+            if removed:
+                cur.execute("INSERT INTO audit_events(workspace_id,action,entity_type,entity_id,details) VALUES(%s,'evidence_retention_purged','evidence_retention','workspace',%s::jsonb)", (self.workspace_id,json.dumps({"count":len(removed)})))
+            return len(removed)
+
+    def ensure_export_allowed(self, companies: list[Company]) -> None:
+        ids = [item.id for item in companies]
+        if not ids: return
+        with self.connection() as db, db.cursor() as cur:
+            cur.execute("""SELECT DISTINCT p.name FROM evidence_items e JOIN source_policies p ON p.id=e.source_policy_id
+                WHERE e.workspace_id=%s AND e.company_id = ANY(%s) AND p.export_allowed=false""", (self.workspace_id,ids))
+            names=[row["name"] for row in cur.fetchall()]
+            if names: raise ValueError("export is prohibited by source policy: " + ", ".join(names))
 
     def authenticate(self, email: str, password: str) -> dict[str, str] | None:
         with self.connection() as db, db.cursor() as cur:
@@ -179,7 +361,17 @@ class PostgresCompanyStore(CompanyStore):
         with self.connection() as db, db.cursor() as cur:
             cur.execute("SELECT field_name,source_name,observed_at FROM company_field_provenance WHERE company_id=%s ORDER BY field_name", (company_id,)); provenance=list(cur.fetchall())
             cur.execute("SELECT action,details,occurred_at FROM audit_events WHERE workspace_id=%s AND entity_type='company' AND entity_id=%s ORDER BY id DESC LIMIT 50", (self.workspace_id,company_id)); events=list(cur.fetchall())
-        return {"company": company.as_dict(), "quality": self._quality(company), "field_provenance": provenance, "audit_events": events}
+            cur.execute("""SELECT e.id::text,e.capture_url,e.capture_domain,e.captured_fields,e.status,e.expires_at,e.created_at,
+                p.name AS policy_name,p.attribution_text,u.email AS captured_by_email,r.email AS reviewer_email
+                FROM evidence_items e JOIN source_policies p ON p.id=e.source_policy_id
+                LEFT JOIN users u ON u.id=e.captured_by LEFT JOIN users r ON r.id=e.reviewed_by
+                WHERE e.workspace_id=%s AND e.company_id=%s ORDER BY e.created_at DESC""", (self.workspace_id,company_id)); evidence=list(cur.fetchall())
+        quality = self._quality(company)
+        approved = sum(item["status"] == "approved" for item in evidence)
+        stale = sum(item["status"] == "stale" for item in evidence)
+        quality["approved_evidence"] = approved; quality["stale_evidence"] = stale
+        quality["score"] = max(0, min(100, quality["score"] + min(10, approved * 5) - min(10, stale * 5)))
+        return {"company": company.as_dict(), "quality": quality, "field_provenance": provenance, "evidence": evidence, "audit_events": events}
 
     def companies_with_quality(self, quality: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         """Return a bounded list for the quality dashboard, scoped to this workspace."""
