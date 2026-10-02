@@ -97,6 +97,11 @@ def make_handler(service: SearchOrchestrator, metrics: Metrics):
             if parsed.path == "/api/companies/export":
                 query = parse_qs(parsed.query)
                 companies = service.store.search(query.get("keyword", [""])[0], query.get("location", [None])[0], 10_000)
+                try:
+                    if hasattr(service.store, "ensure_export_allowed"):
+                        service.store.ensure_export_allowed(companies)
+                except ValueError as error:
+                    return self._reply(403, {"error": {"code": "EXPORT_PROHIBITED", "message": str(error), "retryable": False}})
                 output = io.StringIO(); writer = csv.writer(output)
                 writer.writerow(["name", "categories", "website", "phone", "email", "address", "locality", "city", "country", "sources"])
                 for company in companies:
@@ -111,6 +116,31 @@ def make_handler(service: SearchOrchestrator, metrics: Metrics):
                 return self._reply(200, {"saved_searches": service.store.saved_searches()})
             if parsed.path == "/api/sources":
                 return self._reply(200, {"sources": service.store.sources()})
+            if parsed.path == "/api/source-policies":
+                if not hasattr(service.store, "source_policies"):
+                    return self._reply(501, {"error": {"code": "POSTGRES_REQUIRED", "message": "source policies require PostgreSQL", "retryable": False}})
+                try:
+                    domain = parse_qs(parsed.query).get("domain", [None])[0]
+                    return self._reply(200, {"source_policies": service.store.source_policies(domain, approved_capture_only=bool(domain))})
+                except ValueError as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if parsed.path == "/api/evidence":
+                if not hasattr(service.store, "evidence_items"):
+                    return self._reply(501, {"error": {"code": "POSTGRES_REQUIRED", "message": "evidence review requires PostgreSQL", "retryable": False}})
+                try:
+                    query = parse_qs(parsed.query)
+                    return self._reply(200, {"evidence": service.store.evidence_items(query.get("status", [None])[0], query.get("company_id", [None])[0])})
+                except ValueError as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if parsed.path == "/api/research-sessions":
+                if not hasattr(service.store, "research_sessions"):
+                    return self._reply(501, {"error": {"code": "POSTGRES_REQUIRED", "message": "research sessions require PostgreSQL", "retryable": False}})
+                return self._reply(200, {"research_sessions": service.store.research_sessions()})
+            if parsed.path.startswith("/api/research-sessions/"):
+                if not hasattr(service.store, "research_session"):
+                    return self._reply(501, {"error": {"code": "POSTGRES_REQUIRED", "message": "research sessions require PostgreSQL", "retryable": False}})
+                item = service.store.research_session(unquote(parsed.path.rsplit("/", 1)[-1]))
+                return self._reply(200, item) if item else self._reply(404, {"error": {"code": "NOT_FOUND", "message": "research session not found", "retryable": False}})
             if parsed.path == "/api/duplicates":
                 if not hasattr(service.store, "duplicate_reviews"):
                     return self._reply(501, {"error": {"code": "POSTGRES_REQUIRED", "message": "duplicate review requires PostgreSQL", "retryable": False}})
@@ -146,6 +176,11 @@ def make_handler(service: SearchOrchestrator, metrics: Metrics):
                     return self._reply(200, {"access_token": token_service.issue(identity["user_id"], identity["workspace_id"], identity["role"]), "token_type": "Bearer", "role": identity["role"]})
                 except (ValueError, KeyError, json.JSONDecodeError): return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": "email and password are required", "retryable": False}})
             if not self._authorized(write=True): return
+            if self.path == "/api/auth/extension-token":
+                # The extension receives a deliberately short session credential, never a stored password.
+                if not require_auth or not token_service: return self._reply(400, {"error": {"code": "AUTH_DISABLED", "message": "extension tokens require application authentication", "retryable": False}})
+                identity = self._identity()
+                return self._reply(201, {"access_token": token_service.issue(str(identity["sub"]), str(identity["workspace_id"]), str(identity["role"]), ttl_seconds=600), "expires_in_seconds": 600})
             if self.path == "/api/jobs/search":
                 try:
                     raw = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
@@ -206,6 +241,47 @@ def make_handler(service: SearchOrchestrator, metrics: Metrics):
                     service.store.register_source(raw["name"], raw.get("source_type", "user_csv"),
                         raw.get("permission_basis", "user_provided"), raw.get("license_note"))
                     return self._reply(201, {"status": "registered"})
+                except (ValueError, KeyError, json.JSONDecodeError) as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if self.path == "/api/source-policies":
+                if not self._owner(): return
+                try:
+                    raw = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                    if not hasattr(service.store, "save_source_policy"): raise ValueError("source policies require PostgreSQL")
+                    saved = service.store.save_source_policy(raw, str(self._identity().get("sub")))
+                    return self._reply(201, {"source_policy": saved})
+                except (ValueError, KeyError, json.JSONDecodeError) as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if self.path == "/api/evidence/capture":
+                try:
+                    raw = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                    if not hasattr(service.store, "capture_evidence"): raise ValueError("evidence capture requires PostgreSQL")
+                    evidence = service.store.capture_evidence(raw, str(self._identity().get("sub")))
+                    return self._reply(201, {"evidence_id": evidence["id"], "status": evidence["status"], "company_id": evidence["company_id"]})
+                except (ValueError, KeyError, json.JSONDecodeError) as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if self.path.startswith("/api/evidence/"):
+                try:
+                    raw = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                    if not hasattr(service.store, "review_evidence"): raise ValueError("evidence review requires PostgreSQL")
+                    changed = service.store.review_evidence(self.path.rsplit("/", 1)[-1], raw["status"], str(self._identity().get("sub")))
+                    return self._reply(200, {"status": "updated"}) if changed else self._reply(404, {"error": {"code": "NOT_FOUND", "message": "pending evidence not found", "retryable": False}})
+                except (ValueError, KeyError, json.JSONDecodeError) as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if self.path == "/api/research-sessions":
+                try:
+                    raw = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                    if not hasattr(service.store, "create_research_session"): raise ValueError("research sessions require PostgreSQL")
+                    session = service.store.create_research_session(raw, str(self._identity().get("sub")))
+                    return self._reply(201, {"research_session": session})
+                except (ValueError, KeyError, json.JSONDecodeError) as error:
+                    return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
+            if self.path.startswith("/api/research-tasks/"):
+                try:
+                    raw = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                    if not hasattr(service.store, "update_research_task"): raise ValueError("research tasks require PostgreSQL")
+                    changed = service.store.update_research_task(self.path.rsplit("/", 1)[-1], raw["status"], raw.get("notes"), str(self._identity().get("sub")))
+                    return self._reply(200, {"status": "updated"}) if changed else self._reply(404, {"error": {"code": "NOT_FOUND", "message": "research task not found", "retryable": False}})
                 except (ValueError, KeyError, json.JSONDecodeError) as error:
                     return self._reply(400, {"error": {"code": "INVALID_REQUEST", "message": str(error), "retryable": False}})
             if self.path == "/api/import/csv":

@@ -51,3 +51,14 @@ or revoke access.
 ![Viewer, editor, and owner permissions](../assets/diagrams/role-permissions.svg)
 
 Next: [self-hosting](SELF_HOSTING.md) or [data rights and security](SECURITY_AND_DATA_RIGHTS.md).
+
+## 7. Capture permitted web evidence
+
+When an owner has approved a source policy, an editor can use the optional
+Chrome/Edge extension while viewing that permitted website normally. The editor
+chooses the fields, previews them, and confirms capture. Lociqua stores the URL,
+source policy, time, reviewer state, and field provenance. It does not browse
+sites automatically or collect Google/Maps results.
+
+Read [authorised web research](AUTHORIZED_WEB_RESEARCH.md) before enabling the
+extension.

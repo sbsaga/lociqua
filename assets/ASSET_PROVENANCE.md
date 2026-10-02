@@ -15,13 +15,16 @@ Lociqua. It is an engineering record, not legal advice or trademark clearance.
 | `lociqua-duplicate-review.png` | Repository-directed, AI-generated original illustration created 2026-10-01; reviewed for no requested brands, copied screenshots, or external assets | Explains human duplicate review without deletion | Apache-2.0, subject to human similarity review |
 | `lociqua-quality-and-provenance.png` | Repository-directed, AI-generated original illustration created 2026-10-01; reviewed for no requested brands, copied screenshots, or external assets | Explains quality checks and provenance | Apache-2.0, subject to human similarity review |
 | `lociqua-self-hosted-control.png` | Repository-directed, AI-generated original illustration created 2026-10-01; reviewed for no requested brands, copied screenshots, or external assets | Explains operator-controlled self-hosting boundary | Apache-2.0, subject to human similarity review |
+| `lociqua-approved-source-governance.png` | Repository-directed, AI-generated original illustration created 2026-10-02; reviewed for no requested brands, copied screenshots, or external assets | Explains approved-source policy gate | Apache-2.0, subject to human similarity review |
+| `lociqua-human-evidence-capture.png` | Repository-directed, AI-generated original illustration created 2026-10-02; reviewed for no requested brands, copied screenshots, or external assets | Explains deliberate field selection and evidence capture | Apache-2.0, subject to human similarity review |
+| `lociqua-evidence-lifecycle.png` | Repository-directed, AI-generated original illustration created 2026-10-02; reviewed for no requested brands, copied screenshots, or external assets | Explains review, audit trail, and retention lifecycle | Apache-2.0, subject to human similarity review |
 | `diagrams/*.svg` | Repository-authored SVG shapes, labels, and colors | Documentation diagrams | Apache-2.0 |
 
 The SVG diagrams contain no external URLs, scripts, fonts, raster images,
 tracking, third-party logos, or embedded data. They are intentionally generic
 and can be edited with a text editor.
 
-The five 2026-10-01 PNG illustrations are repository assets made for Lociqua.
+The 2026-10-01 and 2026-10-02 PNG illustrations are repository assets made for Lociqua.
 They contain no intentional third-party logos, product screenshots, tracked
 embeds, external image URLs, or readable third-party content. Generated imagery
 is not a legal guarantee: a maintainer should still visually review it for

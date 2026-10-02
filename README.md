@@ -37,6 +37,10 @@ New here? Read [First steps: from file to result](docs/FIRST_STEPS.md).
   profile.
 - Supports self-hosting with Docker Compose, health checks, metrics, structured
   logs, backup/restore helpers, and an optional generic alert webhook.
+- Supports owner-approved, user-assisted web evidence capture with provenance,
+  review, retention, and export controls; it does not automate browsing.
+
+![Illustration of an owner allowing approved sources through a policy gate while rejecting unapproved sources](assets/lociqua-approved-source-governance.png)
 
 ![Illustration of authorized files moving through a protected directory into searchable records](assets/lociqua-trusted-data-flow.png)
 
@@ -53,6 +57,19 @@ New here? Read [First steps: from file to result](docs/FIRST_STEPS.md).
 This boundary matters: importing a file does not make its use legal. The person
 or organisation operating Lociqua must check the source licence, privacy rules,
 contracts, and any required attribution.
+
+## Web research without an uncontrolled scraper
+
+Lociqua can help when a researcher is already viewing a permitted website. An
+owner first approves that source and records the applicable conditions. Then an
+editor can use the optional browser extension to choose a few fields, inspect a
+preview, and deliberately save them as evidence. The original URL, policy,
+capture time, and reviewer decision stay connected to the record.
+
+![Illustration of a person selecting, reviewing, and confirming only chosen business fields before saving them as protected evidence](assets/lociqua-human-evidence-capture.png)
+
+This is deliberately different from a scraper: Lociqua does not visit websites
+by itself, harvest search-result pages, or work around restrictions.
 
 ## What a normal day with Lociqua looks like
 
@@ -77,6 +94,8 @@ contracts, and any required attribution.
 | I want to use the application | [User guide](docs/USER_GUIDE.md) |
 | I want to self-host it | [Self-hosting guide](docs/SELF_HOSTING.md) and [operations runbook](docs/OPERATIONS.md) |
 | I need data-rights guidance | [Security and data rights](docs/SECURITY_AND_DATA_RIGHTS.md) |
+| I want permitted browser-assisted research | [Authorised web research](docs/AUTHORIZED_WEB_RESEARCH.md) |
+| I need a simple operating workflow | [Web research playbook](docs/WEB_RESEARCH_PLAYBOOK.md) |
 | I want to build or contribute | [Architecture](docs/ARCHITECTURE.md), [API reference](docs/API.md), and [contributing guide](CONTRIBUTING.md) |
 
 ## Quick start
@@ -118,6 +137,8 @@ checks, architecture, API details, and original-asset provenance.
 ![Illustration of quality review that keeps source information connected to a company record](assets/lociqua-quality-and-provenance.png)
 
 ![Illustration of a protected, self-hosted Lociqua deployment under the operator's control](assets/lociqua-self-hosted-control.png)
+
+![Illustration of evidence progressing through human review, audit history, and retention](assets/lociqua-evidence-lifecycle.png)
 
 ## Status and release discipline
 
